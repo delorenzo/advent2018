@@ -7,10 +7,8 @@ import kotlin.system.measureTimeMillis
 /*
     Recommended reading for part 2 -
     {@see https://www.gamedev.net/articles/programming/general-and-gameplay-programming/introduction-to-octrees-r3529}
-    174615096 is too high
-    142535750 is too high
-    113142576 is too high
-    81396999 is not the right answer
+    81396996 is the right answer
+    PriorityQueues are in ascending order by default, not descending!  ....................................>:(
 */
 val MIN_SIZE : BigInteger = BigInteger.ONE
 private val ORIGIN = Position(
@@ -20,7 +18,7 @@ fun main() {
     val nanobotRegex = Regex("^pos=<(-?[0-9]+),(-?[0-9]+),(-?[0-9]+)>, r=([0-9]+)$")
     var min = BigInteger.ZERO
     var max = BigInteger.ZERO
-    File("src/input/day23-input3.txt").forEachLine {
+    File("src/input/day23-input.txt").forEachLine {
         val nanobot = nanobotRegex.matchEntire(it)
         nanobot?.groupValues?.let { groups ->
             val (X, Y, Z, radius) = groups.takeLast(4).map { num -> num.toBigInteger() }
@@ -56,18 +54,15 @@ private fun traverse(root: OctNode) : OctNode? {
     loop@ while (nodes.isNotEmpty()) {
         val node = nodes.poll()
 
-        if (best != null && (best.bots.size > node.bots.size ||
-            (best.bots.size == node.bots.size && node.distanceFrom(ORIGIN) > best.distanceFrom(ORIGIN)))) continue@loop
+        if (best != null && best.bots.size > node.bots.size) { continue@loop }
 
         if (node.isLeaf()) {
-            if (best == null ||
-                node.bots.size > best.bots.size ||
-                (node.bots.size == best.bots.size && node.distanceFrom(ORIGIN) < best.distanceFrom(ORIGIN))) {
+            if (best == null || node.bots.size > best.bots.size || node.distanceFrom(ORIGIN) < best.distanceFrom(ORIGIN)) {
                 best = node
-                //println("Best...${best.boundingBox} ${best.bots.size}")
+                println("New best...${node.boundingBox.min},${node.boundingBox.max}:${node.bots.size}")
             }
         } else {
-            node.build(best?.bots?.size ?: 0)
+            node.build()
             for (child in node.children) {
                 nodes.add(child)
             }
@@ -81,56 +76,31 @@ private data class OctNode(val boundingBox: BoundingBox,
                            val bots: MutableList<Nanobot>,
                            val children: MutableList<OctNode> = mutableListOf(),
                            var activeNodes : Int = 0) : Comparable<OctNode> {
-//    init {
-//        build()
-//    }
-
     fun isLeaf() : Boolean {
         return boundingBox.dimensions.x == BigInteger.ONE
     }
 
     override fun compareTo(other: OctNode): Int {
         // 1- greater number of bots
-        val botsNum = this.bots.size.compareTo(other.bots.size)
+        val botsNum = other.bots.size.compareTo(this.bots.size)
         if (botsNum != 0) return botsNum
-        // 2- greater volume
-        val volume = this.volume().compareTo(other.volume())
-        if (volume != 0) return volume
+        // 2- greater size
+        val size = other.boundingBox.dimensions.x.compareTo(this.boundingBox.dimensions.x)
+        if (size != 0) return size
         // 3- closest to origin
-        return other.distanceFrom(ORIGIN).compareTo(this.distanceFrom(ORIGIN))
+        return this.distanceFrom(ORIGIN).compareTo(other.distanceFrom(ORIGIN))
     }
 
-    lateinit var volumeCache : BigInteger
-    private fun volume() : BigInteger {
-        if (!::volumeCache.isInitialized) {
-            volumeCache = boundingBox.dimensions.x.pow(3)
-        }
-        return volumeCache
-    }
-
-    lateinit var distance: BigInteger
+    lateinit var distanceToOrigin: BigInteger
     fun distanceFrom(position: Position) : BigInteger {
-        if (!::distance.isInitialized) {
-            distance = this.boundingBox.center.manhattanDistance(position)
-        }
-        return distance
+        return this.boundingBox.clamp(position).manhattanDistance(position)
     }
 
-    fun build(bestBots : Int) {
+    fun build() {
         //val buildTime = measureTimeMillis {
-            // Skip leaf nodes
-            if (bots.size <= 1) return
-
             // Find the bounding box
             val dimensions = boundingBox.dimensions
-//        if (boundingBox.dimensions == Position.ZERO) {
-//            boundingBox = boundingBox.findNewBoundingBox()
-//        }
 
-            // If the box is < <1,1,1>, don't bother
-//        if (dimensions.x != dimensions.y || dimensions.y != dimensions.z) {
-//           throw Exception()
-//        }
             if (dimensions.x < MIN_SIZE) return
 
             val half = dimensions / BigInteger.TWO
@@ -145,11 +115,9 @@ private data class OctNode(val boundingBox: BoundingBox,
             for (nanobot in bots) {
                 if (nanobot.radius == BigInteger.ZERO) continue
                 for (i in 0 until 8) {
-                    //if (octants[i].contains(nanobot)) {
                     if (nanobot.inRangeOf(octants[i])) {
                         octantObjects[i].add(nanobot)
                         removedObjects.add(nanobot)
-                        //break // can't be in 2 octants
                     }
                 }
             }
@@ -157,12 +125,10 @@ private data class OctNode(val boundingBox: BoundingBox,
 
             // Create the children
             for (i in 0 until 8) {
-                // Don't bother adding children that we know are worse
-                if (octantObjects[i].isEmpty() || octantObjects[i].size < bestBots) continue
+                if (octantObjects[i].isEmpty()) continue
                 val potentialChild = createNode(octants[i], octantObjects[i])
                 if (potentialChild != null) {
                     children.add(potentialChild)
-                    //potentialChild.build()
                 }
             }
 //        }
@@ -253,12 +219,6 @@ private data class BoundingBox(var min: Position, var max: Position) {
      * Returns true if the nanobot is _fully_ contained by the bounding box
      */
     fun contains(nanobot: Nanobot) : Boolean {
-//        val radiusOffset = Position(nanobot.radius, nanobot.radius, nanobot.radius)
-//        val nanobotMin = nanobot.position - radiusOffset
-//        val nanobotMax = nanobot.position + radiusOffset
-//        return  nanobotMin.x >= min.x && nanobotMax.x <= max.x &&
-//                nanobotMin.y >= min.y && nanobotMax.y <= max.y &&
-//                nanobotMin.z >= min.z && nanobotMax.z <= max.z
         return when {
             //it is outside of the cube on the right side
             nanobot.position.x + nanobot.radius > max.x -> false
@@ -273,39 +233,6 @@ private data class BoundingBox(var min: Position, var max: Position) {
             //it is outside of the cube on the far side
             nanobot.position.z - nanobot.radius < min.z -> false
             else -> true
-        }
-    }
-
-    fun intersects(bot: Nanobot): Boolean {
-        val distanceBetweenCenters =
-            Position(
-                (bot.position.x - center.x).abs(),
-                (bot.position.y - center.y).abs(),
-                (bot.position.z - center.z).abs()
-            )
-        val halfWidth = dimensions.x / BigInteger.TWO
-        val halfHeight = dimensions.y / BigInteger.TWO
-        val halfDepth = dimensions.z / BigInteger.TWO
-
-        return when {
-            // They're too far apart, no intersection is possible
-            distanceBetweenCenters.x > halfWidth + bot.radius -> false
-            distanceBetweenCenters.x > halfHeight + bot.radius -> false
-            distanceBetweenCenters.z > halfDepth + bot.radius -> false
-            // They're so close that they have to be intersecting
-            distanceBetweenCenters.x <= halfWidth -> true
-            distanceBetweenCenters.y <= halfHeight -> true
-            distanceBetweenCenters.z <= halfDepth -> true
-            // The circle might intersect the corner of the rectangle:
-            // 1) what's the distance between the center of the circle and the corner of the rectangle?
-            // 2) Is this distance more than the radius of the circle?
-            else -> {
-                val cornerDistance =
-                    (distanceBetweenCenters.x - halfWidth).pow(2) +
-                    (distanceBetweenCenters.y - halfHeight).pow(2) +
-                    (distanceBetweenCenters.z - halfDepth).pow(2)
-                return cornerDistance <= (bot.radius.pow(2))
-            }
         }
     }
 }
@@ -346,24 +273,9 @@ private data class Nanobot(val position: Position, val radius: BigInteger) : Com
     fun manhattanDistance(other: Nanobot) : BigInteger {
         return position.manhattanDistance(other.position)
     }
-
-    fun intersects(other: Nanobot) : Boolean {
-        val distanceBetweenCenters = this.position.euclideanDistance(other.position)
-        val bigRadius = this.radius + other.radius
-        return when {
-            distanceBetweenCenters == bigRadius -> true
-            distanceBetweenCenters > bigRadius -> false
-            distanceBetweenCenters < bigRadius -> true
-            else -> false // this should be impossible to hit, but required for Kotlin to be happy
-        }
-    }
 }
 
 private data class Position(val x: BigInteger, val y: BigInteger, val z: BigInteger) {
-    companion object {
-        val ZERO = Position(BigInteger.ZERO, BigInteger.ZERO, BigInteger.ZERO)
-    }
-
     fun manhattanDistance(other: Position) : BigInteger {
         return (x - other.x).abs() + (y - other.y).abs() + (z - other.z).abs()
     }
