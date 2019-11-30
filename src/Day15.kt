@@ -9,16 +9,16 @@ private const val OPEN = '.'
 private const val WALL = '#'
 private const val GOBLIN = 'G'
 private const val ELF = 'E'
-data class Target(val target: Unit, val path: List<Pair<Int,Int>>, val pathLength: Int)
+private data class Target(val target: Unit, val path: List<Pair<Int,Int>>, val pathLength: Int)
 
-data class UNode(val x: Int, val y: Int, val parent: UNode?) {
+private data class UNode(val x: Int, val y: Int, val parent: UNode?) {
     override fun equals(other: Any?): Boolean {
         if (other !is UNode) return false
         return other.x == x && other.y == y
     }
 }
 
-abstract class Unit(var x : Int, var y: Int) : Comparable<Unit> {
+private abstract class Unit(var x : Int, var y: Int) : Comparable<Unit> {
     override fun compareTo(other: Unit): Int {
         //top to bottom, left to right
         if (this.y < other.y) return -1
@@ -167,7 +167,7 @@ abstract class Unit(var x : Int, var y: Int) : Comparable<Unit> {
     var target: Unit? = null
 }
 
-class Elf(x: Int, y: Int, override val attackPower: Int) : Unit(x, y) {
+private class Elf(x: Int, y: Int, override val attackPower: Int) : Unit(x, y) {
     override fun getSymbol(): Char {
         return ELF
     }
@@ -175,7 +175,7 @@ class Elf(x: Int, y: Int, override val attackPower: Int) : Unit(x, y) {
     override val targetSymbol: Char = GOBLIN
 }
 
-class Goblin(x: Int, y: Int) : Unit(x, y) {
+private class Goblin(x: Int, y: Int) : Unit(x, y) {
     override fun getSymbol(): Char {
         return GOBLIN
     }
@@ -285,7 +285,7 @@ private fun checkForDeadElves(units : List<Unit>) {
     }
 }
 
-fun printMap(map: List<CharArray>, units: List<Unit>, round: Int) {
+private fun printMap(map: List<CharArray>, units: List<Unit>, round: Int) {
     println("After $round rounds:")
     map.forEachIndexed { index, chars ->
         print(chars)
