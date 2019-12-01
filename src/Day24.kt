@@ -1,17 +1,17 @@
 import java.io.File
 
 private data class Army(val id: Int, var numUnits: Int, val side: Allegiance, val hitPoints: Int,
-                        val initiative: Int, val damage: Int, val weakTo: Set<AttackType>,
+                        val initiative: Int, var damage: Int, val weakTo: Set<AttackType>,
                         val immuneTo: Set<AttackType>, val attackType: AttackType) {
     fun power() : Int {
         return numUnits * damage
     }
     var target: Army? = null
-    fun damageFrom(other: Army) : Int {
+    fun damageFrom(other: Army) : Long {
         return when {
-            weakTo.contains(other.attackType) -> other.power() * 2
+            weakTo.contains(other.attackType) -> other.power() * 2L
             immuneTo.contains(other.attackType) -> 0
-            else -> other.power()
+            else -> other.power().toLong()
         }
     }
 }
@@ -100,20 +100,37 @@ private fun parse() : List<Army> {
 }
 
 fun main() {
-    var armies = parse()
-    var numImmune = armies.partition { it.side == Allegiance.IMMUNE_SYSTEM }
-    while(numImmune.first.isNotEmpty() && numImmune.second.isNotEmpty()) {
-        armies = fight(armies)
-        numImmune = armies.partition { it.side == Allegiance.IMMUNE_SYSTEM }
-    }
+    val armies = parse()
+    var boost = 0
+    var numImmune: Pair<List<Army>, List<Army>>
+    do {
+        boost+=52
 
+        val boostedArmies = armies.map {
+            Army(id = it.id,
+                hitPoints = it.hitPoints,
+                damage = if (it.side == Allegiance.IMMUNE_SYSTEM) { it.damage + boost } else { it.damage} ,
+                numUnits = it.numUnits,
+                weakTo = it.weakTo,
+                immuneTo = it.immuneTo,
+                attackType = it.attackType,
+                initiative = it.initiative,
+                side = it.side) }.toMutableList()
+        println("Boost:: $boost")
+        numImmune = armies.partition { it.side == Allegiance.IMMUNE_SYSTEM }
+        while(numImmune.first.isNotEmpty() && numImmune.second.isNotEmpty()) {
+            fight(boostedArmies)
+            numImmune = boostedArmies.partition { it.side == Allegiance.IMMUNE_SYSTEM }
+        }
+    } while (numImmune.first.isEmpty())
     println(numImmune.first.sumBy { it.numUnits })
     println(numImmune.second.sumBy { it.numUnits })
+    println("Boost was $boost")
 }
 
-private fun fight(armies: List<Army>) : List<Army> {
+private fun fight(armies: MutableList<Army>) {
     targetSelection(armies)
-    return attacking(armies)
+    attacking(armies)
 }
 
 //each group attempts to choose a target
@@ -123,29 +140,37 @@ private fun targetSelection(armies : List<Army>) {
     val targeted = mutableMapOf<Int, Boolean>().withDefault { false }
     val sortedArmies = armies.sortedWith(compareByDescending<Army> { it.power() }.thenByDescending { it.initiative })
     for (army in sortedArmies) {
+        if (army.numUnits == 0) {
+            println("${army.id} has 0 units left :'(")
+            continue
+        }
         army.target = sortedArmies
             .filter { it.side != army.side && !targeted.getOrDefault(it.id, false) && it.damageFrom(army) > 0 }
             .sortedWith(compareByDescending<Army> {it.damageFrom(army)}
                 .thenByDescending { it.power() }
                 .thenByDescending { it.initiative })
             .firstOrNull()
-        //println("${army.side} #${army.id} will attack ${army.target} with ${army.target?.damageFrom(army)}")
+        println("${army.side} #${army.id} will attack ${army.target} with ${army.target?.damageFrom(army)} and power ${army.power()}")
         army.target?.let {target ->
             targeted[target.id] = true
         }
     }
 }
 
-private fun attacking (armies: List<Army>) : List<Army> {
+private fun attacking (armies: MutableList<Army>) {
+    val removedArmies = mutableListOf<Army>()
     val sortedArmies = armies.sortedWith(compareByDescending{it.initiative } )
     for (army in sortedArmies) {
         if (army.numUnits == 0) continue
         army.target?.let {
             val damage = it.damageFrom(army)
             val deaths = damage / it.hitPoints
-            it.numUnits = maxOf(0, it.numUnits - deaths)
-            //println("${army.side} #${army.id} killed $deaths units with $damage")
+            it.numUnits = maxOf(0L, it.numUnits - deaths).toInt()
+            if (it.numUnits == 0) {
+                removedArmies.add(it)
+            }
+            println("${army.side} #${army.id} killed $deaths units with $damage")
         }
     }
-    return sortedArmies.filterNot { it.numUnits == 0 }
+    armies.removeAll(removedArmies)
 }
